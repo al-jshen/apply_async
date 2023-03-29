@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "apply-async"
+version = "0.1.0"
+description = ""
+authors = ["Jeff Shen <shenjeff@princeton.edu>"]
+readme = "README.md"
+packages = [{include = "apply_async"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+rich = "^13.3.3"
+multiprocess = "^0.70.14"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
