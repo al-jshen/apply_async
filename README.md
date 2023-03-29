@@ -22,3 +22,8 @@ Latest version (from source):
 ```bash
 pip install "git+https://github.com/al-jshen/apply_async"
 ```
+
+## Demo
+
+<img width="656" alt="Screenshot 2023-03-29 at 6 26 16 PM" src="https://user-images.githubusercontent.com/22137276/228681583-98f65227-68fe-472a-a3e1-ab320bdb60cb.png">
+
