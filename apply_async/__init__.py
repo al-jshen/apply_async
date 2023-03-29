@@ -30,7 +30,7 @@ def apply_async(
     progress: bool = True,
     update_every: int = 10,
     refresh_per_second: int = 2,
-    timeout: int = 3,
+    timeout: float = 1.0,
 ) -> list[T]:
     """Apply a function to a list of files in parallel using multiprocessing.
     This is done in batches to avoid memory issues, but the final result is
@@ -67,7 +67,7 @@ def apply_async(
 
     q = m.JoinableQueue()
     pq = m.JoinableQueue()
-    results = {}
+    results = m.dict()
 
     def make_batch(batch_names, ctr, tid, apply_fn):
         pq.put(tid)
@@ -117,7 +117,6 @@ def apply_async(
                         except:
                             pass
                         break
-
         else:
             while True:
                 try:
@@ -148,6 +147,12 @@ def apply_async(
         pb.join()
         q.join()
         pq.join()
+
+    assert q.empty(), "Progress queue is not empty"
+    assert pq.empty(), "Task queue is not empty"
+
+    total_batches = len(taskids)
+    assert len(results.keys()) == total_batches, "Not all batches were processed"
 
     return [
         item
