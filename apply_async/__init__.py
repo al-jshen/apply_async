@@ -30,6 +30,7 @@ def apply_async(
     progress: bool = True,
     update_every: int = 10,
     refresh_per_second: int = 2,
+    timeout: int = 3,
 ) -> list[T]:
     """Apply a function to a list of files in parallel using multiprocessing.
     This is done in batches to avoid memory issues, but the final result is
@@ -51,7 +52,10 @@ def apply_async(
         How often to update the progress bar, by default 10
     refresh_per_second : int, optional
         How often to refresh the progress bars, by default 2 times per second
-
+    timeout : int, optional
+        Longest amount of time to wait for a progress update, by default 2 seconds
+        If no progress is made for this amount of time, the progress bar will
+        be closed.
 
     Returns
     -------
@@ -81,7 +85,7 @@ def apply_async(
     def manage_bar(taskids, show_pbar):
         if show_pbar:
             with Progress(
-                TextColumn("Process {task.description}"),
+                TextColumn("Process {task.description}/{task.fields[total_batches]}"),
                 BarColumn(),
                 TaskProgressColumn(),
                 TextColumn("({task.completed}/{task.total})"),
@@ -93,11 +97,13 @@ def apply_async(
                     while not pq.empty():
                         p = pq.get()
                         if p is not None:
-                            progress.add_task(p, total=taskids[p])
+                            progress.add_task(
+                                p, total=taskids[p], total_batches=len(taskids)
+                            )
                         pq.task_done()
 
                     try:
-                        t_id, step = q.get(timeout=5)
+                        t_id, step = q.get(timeout=timeout)
                         if t_id in progress.task_ids:
                             q.task_done()
                             if step != -1:
@@ -105,30 +111,35 @@ def apply_async(
                             else:
                                 progress.remove_task(t_id)
                     except:
-                        q.close()
-                        pq.close()
+                        try:
+                            q.close()
+                            pq.close()
+                        except:
+                            pass
                         break
 
         else:
             while True:
                 try:
-                    t_id, step = q.get(timeout=5)
+                    t_id, step = q.get(timeout=timeout)
                 except:
-                    q.close()
-                    pq.close()
+                    try:
+                        q.close()
+                        pq.close()
+                    except:
+                        pass
                     break
 
     ctr = 0
     procs = []
     taskids = dict()
     with Pool(nproc) as pool:
-        total_batches = len(files) // batch_size + (len(files) % batch_size > 0)
         for j, i in enumerate(range(0, len(files), batch_size)):
             batch_names = files[i : i + batch_size]
             curr_size = len(batch_names)
             p = pool.apply_async(make_batch, args=(batch_names, ctr, j, apply_fn))
             procs.append(p)
-            taskids[j] = f"{curr_size}/{total_batches}"
+            taskids[j] = curr_size
             ctr += curr_size
         pb = Process(target=manage_bar, args=(taskids, progress))
         pb.start()
