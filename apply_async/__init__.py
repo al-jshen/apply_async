@@ -82,45 +82,35 @@ def apply_async(
         results[ctr] = res
         q.put_nowait((tid, -1))
 
-    def manage_bar(taskids, show_pbar):
-        if show_pbar:
-            with Progress(
-                TextColumn("Process {task.description}/{task.fields[total_batches]}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TextColumn("({task.completed}/{task.total})"),
-                "•",
-                TimeRemainingColumn(),
-                refresh_per_second=refresh_per_second,
-            ) as progress:
-                while True:
-                    while not pq.empty():
-                        p = pq.get()
-                        if p is not None:
-                            progress.add_task(
-                                p, total=taskids[p], total_batches=len(taskids)
-                            )
-                        pq.task_done()
-
-                    try:
-                        t_id, step = q.get(timeout=timeout)
-                        if t_id in progress.task_ids:
-                            q.task_done()
-                            if step != -1:
-                                progress.update(t_id, completed=step)
-                            else:
-                                progress.remove_task(t_id)
-                    except:
-                        try:
-                            q.close()
-                            pq.close()
-                        except:
-                            pass
-                        break
-        else:
+    def manage_bar(taskids):
+        with Progress(
+            TextColumn("Process {task.description}/{task.fields[total_batches]}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("({task.completed}/{task.total})"),
+            "•",
+            TimeRemainingColumn(),
+            refresh_per_second=refresh_per_second,
+        ) as pbar:
             while True:
+                while not pq.empty():
+                    p = pq.get()
+                    if p is not None:
+                        pbar.add_task(
+                            description=p,
+                            total=taskids[p],
+                            total_batches=len(taskids),
+                        )
+                    pq.task_done()
+
                 try:
                     t_id, step = q.get(timeout=timeout)
+                    if t_id in pbar.task_ids:
+                        if step != -1:
+                            pbar.update(t_id, completed=step)
+                        else:
+                            pbar.remove_task(t_id)
+                    q.task_done()
                 except:
                     try:
                         q.close()
@@ -132,6 +122,7 @@ def apply_async(
     ctr = 0
     procs = []
     taskids = dict()
+
     with Pool(nproc) as pool:
         for j, i in enumerate(range(0, len(files), batch_size)):
             batch_names = files[i : i + batch_size]
@@ -140,19 +131,20 @@ def apply_async(
             procs.append(p)
             taskids[j] = curr_size
             ctr += curr_size
-        pb = Process(target=manage_bar, args=(taskids, progress))
+
+        pb = Process(target=manage_bar, args=(taskids,))
         pb.start()
+
         for p in procs:
-            p.get()
-        pb.join()
+            p.wait()
+
         q.join()
         pq.join()
+        pb.terminate()
+        pb.join()
 
-    assert q.empty(), "Progress queue is not empty"
-    assert pq.empty(), "Task queue is not empty"
-
-    total_batches = len(taskids)
-    assert len(results.keys()) == total_batches, "Not all batches were processed"
+        total_batches = len(taskids)
+        assert len(results.keys()) == total_batches, "Not all batches were processed"
 
     return [
         item
